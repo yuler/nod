@@ -1,0 +1,16 @@
+[package]
+name = "nod"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+chrono = { version = "0.4", features = ["serde"] }
+sysinfo = "0.32"
+battery = "0.7"
+tracing = "0.1"
+tracing-appender = "0.2"
+tracing-subscriber = "0.3"
+hostname = "0.3"
