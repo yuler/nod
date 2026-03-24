@@ -2,6 +2,7 @@ use sysinfo::{System, Disks, Networks};
 use battery::Manager;
 use crate::models::Event;
 use chrono::Utc;
+use std::process::Command;
 
 pub trait MetricCollector {
     fn collect_tick(&mut self) -> Event;
@@ -95,6 +96,40 @@ impl LinuxCollector {
         let minutes = (seconds % 3600) / 60;
         format!("{} days, {:02}:{:02}", days, hours, minutes)
     }
+
+    fn get_linux_active_window(&self) -> Option<(String, String)> {
+        // Step 1: Get active window ID
+        let output = Command::new("xprop")
+            .args(["-root", "_NET_ACTIVE_WINDOW"])
+            .output()
+            .ok()?;
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let id = stdout.split("#").nth(1)?.trim().split(",").next()?.trim();
+        if id == "0x0" { return None; }
+
+        // Step 2: Get window title
+        let title_output = Command::new("xprop")
+            .args(["-id", id, "_NET_WM_NAME", "WM_NAME"])
+            .output()
+            .ok()?;
+        let title_stdout = String::from_utf8_lossy(&title_output.stdout);
+        let title = title_stdout.split("=").nth(1)?.trim().trim_matches('"').to_string();
+
+        // Step 3: Get window class (app name)
+        let class_output = Command::new("xprop")
+            .args(["-id", id, "WM_CLASS"])
+            .output()
+            .ok()?;
+        let class_stdout = String::from_utf8_lossy(&class_output.stdout);
+        let app_name = class_stdout.split("=").nth(1)?
+            .split(",")
+            .last()?
+            .trim()
+            .trim_matches('"')
+            .to_string();
+
+        Some((app_name, title))
+    }
 }
 
 impl MetricCollector for LinuxCollector {
@@ -118,6 +153,14 @@ impl MetricCollector for LinuxCollector {
     }
 
     fn get_active_window_event(&self) -> Option<Event> {
-        None
+        self.get_linux_active_window().map(|(app, title)| {
+            Event::Window {
+                hostname: self.hostname.clone(),
+                timestamp: Utc::now(),
+                v: 1,
+                window: app,
+                title: Some(title),
+            }
+        })
     }
 }

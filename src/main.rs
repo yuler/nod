@@ -15,7 +15,7 @@ async fn main() {
     let hostname = collector.get_hostname();
 
     // Setup daily log rotation
-    let file_appender = tracing_appender::rolling::daily("data", format!("{}_", hostname));
+    let file_appender = tracing_appender::rolling::daily("logs", format!("{}_", hostname));
     let (non_blocking, _guard) = non_blocking(file_appender);
     
     tracing_subscriber::fmt()
@@ -36,7 +36,7 @@ async fn main() {
 
     let collector = Arc::new(Mutex::new(collector));
 
-    // Tick Loop (60s)
+    // Tick Loop (5s)
     let tick_collector = Arc::clone(&collector);
     tokio::spawn(async move {
         loop {
@@ -47,7 +47,7 @@ async fn main() {
             if let Ok(json) = serde_json::to_string(&event) {
                 info!(target: "nod", "{}", json);
             }
-            tokio::time::sleep(Duration::from_secs(60)).await;
+            tokio::time::sleep(Duration::from_secs(5)).await;
         }
     });
 
