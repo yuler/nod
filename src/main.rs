@@ -8,6 +8,7 @@ use tracing::info;
 use tracing_appender::non_blocking;
 use std::sync::Arc;
 use tokio::sync::Mutex;
+use tokio::io::{AsyncBufReadExt, BufReader};
 
 #[tokio::main]
 async fn main() {
@@ -15,7 +16,7 @@ async fn main() {
     let hostname = collector.get_hostname();
 
     // Setup daily log rotation
-    let file_appender = tracing_appender::rolling::daily("logs", format!("{}_", hostname));
+    let file_appender = tracing_appender::rolling::daily("data", format!("{}_", hostname));
     let (non_blocking, _guard) = non_blocking(file_appender);
     
     tracing_subscriber::fmt()
@@ -34,10 +35,10 @@ async fn main() {
         action: "boot".to_string(),
     }).unwrap());
 
-    let collector = Arc::new(Mutex::new(collector));
+    let collector_shared = Arc::new(Mutex::new(collector));
 
-    // Tick Loop (5s)
-    let tick_collector = Arc::clone(&collector);
+    // 1. Tick Loop (60s)
+    let tick_collector = Arc::clone(&collector_shared);
     tokio::spawn(async move {
         loop {
             let event = {
@@ -47,37 +48,60 @@ async fn main() {
             if let Ok(json) = serde_json::to_string(&event) {
                 info!(target: "nod", "{}", json);
             }
-            tokio::time::sleep(Duration::from_secs(5)).await;
+            tokio::time::sleep(Duration::from_secs(60)).await;
         }
     });
 
-    // Window Monitoring Loop (2s)
-    let window_collector = Arc::clone(&collector);
+    // 2. Window Monitoring Loop (Event-driven via xprop -spy)
+    let window_collector = Arc::clone(&collector_shared);
     let window_hostname = hostname.clone();
     tokio::spawn(async move {
-        let mut last_window: Option<String> = None;
-        loop {
-            let event = {
-                let c = window_collector.lock().await;
-                c.get_active_window_event()
-            };
+        if let Some(mut child) = LinuxCollector::spawn_window_spy() {
+            let stdout = child.stdout.take().expect("Failed to open stdout");
+            let mut reader = BufReader::new(stdout).lines();
 
-            if let Some(Event::Window { window, title, .. }) = event {
-                if Some(window.clone()) != last_window {
-                    last_window = Some(window.clone());
-                    let full_event = Event::Window {
-                        hostname: window_hostname.clone(),
-                        timestamp: chrono::Utc::now(),
-                        v: 1,
-                        window,
-                        title,
-                    };
-                    if let Ok(json) = serde_json::to_string(&full_event) {
+            // Initial capture
+            {
+                let c = window_collector.lock().await;
+                if let Some(event) = c.get_active_window_event() {
+                    if let Ok(json) = serde_json::to_string(&event) {
                         info!(target: "nod", "{}", json);
                     }
                 }
             }
-            tokio::time::sleep(Duration::from_secs(2)).await;
+
+            while let Ok(Some(_line)) = reader.next_line().await {
+                // xprop -spy outputted a change, trigger collection
+                let event = {
+                    let c = window_collector.lock().await;
+                    c.get_active_window_event()
+                };
+
+                if let Some(event) = event {
+                    if let Ok(json) = serde_json::to_string(&event) {
+                        info!(target: "nod", "{}", json);
+                    }
+                }
+            }
+        } else {
+            // Fallback to polling if spy fails
+            let mut last_window: Option<String> = None;
+            loop {
+                let event = {
+                    let c = window_collector.lock().await;
+                    c.get_active_window_event()
+                };
+
+                if let Some(Event::Window { window, .. }) = &event {
+                    if Some(window.clone()) != last_window {
+                        last_window = Some(window.clone());
+                        if let Ok(json) = serde_json::to_string(&event) {
+                            info!(target: "nod", "{}", json);
+                        }
+                    }
+                }
+                tokio::time::sleep(Duration::from_secs(2)).await;
+            }
         }
     });
 

@@ -2,7 +2,8 @@ use sysinfo::{System, Disks, Networks};
 use battery::Manager;
 use crate::models::Event;
 use chrono::Utc;
-use std::process::Command;
+use std::process::{Command, Stdio};
+use tokio::process::Command as TokioCommand;
 
 pub trait MetricCollector {
     fn collect_tick(&mut self) -> Event;
@@ -98,7 +99,6 @@ impl LinuxCollector {
     }
 
     fn get_linux_active_window(&self) -> Option<(String, String)> {
-        // Step 1: Get active window ID
         let output = Command::new("xprop")
             .args(["-root", "_NET_ACTIVE_WINDOW"])
             .output()
@@ -107,7 +107,6 @@ impl LinuxCollector {
         let id = stdout.split("#").nth(1)?.trim().split(",").next()?.trim();
         if id == "0x0" { return None; }
 
-        // Step 2: Get window title
         let title_output = Command::new("xprop")
             .args(["-id", id, "_NET_WM_NAME", "WM_NAME"])
             .output()
@@ -115,7 +114,6 @@ impl LinuxCollector {
         let title_stdout = String::from_utf8_lossy(&title_output.stdout);
         let title = title_stdout.split("=").nth(1)?.trim().trim_matches('"').to_string();
 
-        // Step 3: Get window class (app name)
         let class_output = Command::new("xprop")
             .args(["-id", id, "WM_CLASS"])
             .output()
@@ -129,6 +127,14 @@ impl LinuxCollector {
             .to_string();
 
         Some((app_name, title))
+    }
+
+    pub fn spawn_window_spy() -> Option<tokio::process::Child> {
+        TokioCommand::new("xprop")
+            .args(["-spy", "-root", "_NET_ACTIVE_WINDOW"])
+            .stdout(Stdio::piped())
+            .spawn()
+            .ok()
     }
 }
 
