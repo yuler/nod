@@ -54,7 +54,6 @@ async fn main() {
 
     // 2. Window Monitoring Loop (Event-driven via xprop -spy)
     let window_collector = Arc::clone(&collector_shared);
-    let window_hostname = hostname.clone();
     tokio::spawn(async move {
         if let Some(mut child) = LinuxCollector::spawn_window_spy() {
             let stdout = child.stdout.take().expect("Failed to open stdout");

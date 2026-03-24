@@ -1,0 +1,3 @@
+{"event":"lifecycle","hostname":"yule-Z390-AORUS-PRO-WIFI","timestamp":"2026-03-24T06:49:35.590822801Z","v":1,"action":"boot"}
+{"event":"tick","hostname":"yule-Z390-AORUS-PRO-WIFI","timestamp":"2026-03-24T06:49:35.590940473Z","v":1,"network":"none","cpu":"8.6%","mem":"25.0GB/31.2GB","disk":"220GB/233GB","idle_secs":0,"uptime":"5 days, 21:07","power":"AC"}
+{"event":"window","hostname":"yule-Z390-AORUS-PRO-WIFI","timestamp":"2026-03-24T06:49:58.334764025Z","v":1,"window":"wechat-devtools","title":"mini - 微信开发者工具 Stable v1.06.2412050\"\nWM_NAME(UTF8_STRING)"}
